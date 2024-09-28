@@ -202,4 +202,35 @@ class MongoClientDB:
         return workspace
 
 
+def track_click(self, user_id, link):
+ 
+        result = self.db.clicks.find_one({'user_id': user_id, 'link': link})
+        
+        if result:
+            self.db.clicks.update_one(
+                {'user_id': user_id, 'link': link},
+                {'$inc': {'click_count': 1}}  
+            )
+        else:
+          
+            self.db.clicks.insert_one({
+                'user_id': user_id,
+                'link': link,
+                'click_count': 1,
+                'last_clicked': datetime.now()
+            })
+        print(f"Click tracked for user: {user_id} on link: {link}")
+
+    def get_click_count(self, user_id, link):
+        result = self.db.clicks.find_one({'user_id': user_id, 'link': link})
+        return result['click_count'] if result else 0
+
+    def get_all_clicks_by_user(self, user_id):
+        results = self.db.clicks.find({'user_id': user_id})
+        return [{'link': res['link'], 'click_count': res['click_count']} for res in results]
+
+ 
+
+
+
 mongo_client = MongoClientDB()
