@@ -95,3 +95,77 @@ def get_workspace_by_id(id):
     }
 
     return jsonify(response), 200
+
+
+
+def generate_short_id(length=6):
+    characters = string.ascii_letters + string.digits
+    short_id = ''.join(random.choice(characters) for _ in range(length))
+
+    # Check if the short ID already exists in MongoDB
+    while mongo_client.get_workspace_by_short_id(short_id) is not None:
+        logging.warning(f"Short ID {short_id} already exists, generating a new one")
+        short_id = ''.join(random.choice(characters) for _ in range(length))
+
+    return short_id
+
+@user_api_ap.route('/generate', methods=['POST'])
+def generate_short_url():
+    """Generate a short URL for a given original URL."""
+    user = get_user_from_auth_token() 
+    data = request.get_json()
+    original_url = data.get('url')
+
+    if not original_url:
+        return jsonify({"error": "URL is required"}), 400
+
+ 
+    short_id = generate_short_id()
+
+   
+    workspace = {
+        "user_id": user['user_id'],
+        "original_url": original_url,
+        "short_id": short_id,
+        "clicks": 0,
+        "created_at": datetime.datetime.utcnow()
+    }
+    workspace_id = mongo_client.add_workspace(workspace) 
+    response = {
+        "status": "Short URL generated",
+        "original_url": original_url,
+        "short_url": f"http://localhost:5000/short/{short_id}",
+        "workspace_id": str(workspace_id)
+    }
+    return jsonify(response), 200
+
+
+@user_api_ap.route('/short/<short_id>', methods=['GET'])
+def redirect_short_url(short_id):
+    """Redirect to the original URL and count clicks."""
+    url_data = mongo_client.get_workspace_by_short_id(short_id)
+
+    if not url_data:
+        return jsonify({"error": "Short URL not found"}), 404
+
+    mongo_client.update_click_count(short_id)  
+
+    return redirect(url_data['original_url'])
+
+# API to get click count for a specific short URL
+@user_api_ap.route('/clicks/<short_id>', methods=['GET'])
+def get_click_count(short_id):
+    """Get the total click count for a specific user and link."""
+    user = get_user_from_auth_token()  
+    url_data = mongo_client.get_workspace_by_short_id(short_id)
+
+    if not url_data or url_data['user_id'] != user['user_id']:
+        return jsonify({"error": "Short URL not found or access denied"}), 404
+
+  
+    response = {
+        "short_id": short_id,
+        "original_url": url_data['original_url'],
+        "clicks": url_data['clicks']
+    }
+    return jsonify(response), 200
